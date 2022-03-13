@@ -1,0 +1,6 @@
+arrow
+sqlalchemy
+requests
+slack_sdk
+scrapy
+python-telegram-bot
