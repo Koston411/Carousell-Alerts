@@ -55,25 +55,26 @@ class CarousellSpider(scrapy.Spider):
         json_obj = json.loads(data)
         searchItems = json_obj['SearchListing']['listingCards']
 
-        for item in searchItems:
-            # Select only the items which are not promoted by Carousell
-            if not 'promoted' in item:
-                is_item_valid = False
-                for search_keyword in self.db_keywords:
-                    search_keyword = search_keyword.lower()
-                    title = item['title'].lower()
+        if (searchItems):
+            for item in searchItems:
+                # Select only the items which are not promoted by Carousell
+                if not 'promoted' in item:
+                    is_item_valid = False
+                    for search_keyword in self.db_keywords:
+                        search_keyword = search_keyword.lower()
+                        title = item['title'].lower()
 
-                    if any(word in title for word in search_keyword.split()):
-                        is_item_valid = True
+                        if any(word in title for word in search_keyword.split()):
+                            is_item_valid = True
+                            yield item
+                            break
+
+                    if is_item_valid == False:
+                        # print ('<<<<<<<<<<<<<<<<<<<<<<<<<<< ' + search_keyword + ' NOT in title')
+                        # print (title)
+                        item['title'] = '? ' + item['title']
+                        # print (response.request)
                         yield item
-                        break
-
-                if is_item_valid == False:
-                    # print ('<<<<<<<<<<<<<<<<<<<<<<<<<<< ' + search_keyword + ' NOT in title')
-                    # print (title)
-                    item['title'] = '? ' + item['title']
-                    # print (response.request)
-                    yield item
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -140,6 +141,14 @@ class CarousellSearch(object):
 
         @defer.inlineCallbacks
         def crawl():
+
+            # Remove unused keywords in DB
+            db_keywords = self.session.query(Keyword).filter(~Keyword.chats.any()).all()
+            for keyword_obj in db_keywords:
+                self.session.delete(keyword_obj)
+            self.session.commit()
+
+            # Parse the keywords in DB to search in Carousell
             for url in generate_search_urls():
                 # print ("========================== Start spider")
                 # print ("url: " + url)

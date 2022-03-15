@@ -88,6 +88,6 @@ class Processing_items():
             # robot.slack_post_message(item)
 
             # Send notifications to Telegram
-            TelegramChatBot.prepare_alert(item, chats_to_notify)
+            TelegramChatBot.prepare_alert(item, chats_to_notify, search_keyword)
 
             return

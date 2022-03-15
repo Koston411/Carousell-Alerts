@@ -26,11 +26,13 @@ class Chat(Base):
     keywords = relationship(
         'Keyword',
         secondary = keyword_chat_table,
+        cascade="all, delete",
         back_populates = 'chats'
     )
     listings = relationship(
         'CarousellListingDB',
         secondary = listing_chat_table,
+        cascade="all, delete",
         back_populates = 'chats'
     )
 

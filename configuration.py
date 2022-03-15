@@ -4,6 +4,8 @@
 RESULTS_COUNT = 2
 FREQUENCY = 60
 
+DEBUG = True
+
 # /add kraken x52
 # /add kraken x53
 # /add nzxt x52

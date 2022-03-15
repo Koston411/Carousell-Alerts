@@ -1,5 +1,8 @@
+from ast import keyword
 import logging
-# from msilib import Table
+import json
+import html
+from configuration import DEBUG
 import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
@@ -7,7 +10,7 @@ from sqlalchemy import insert, update, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from DB_elements import Keyword, Chat
+from DB_elements import CarousellListingDB, Keyword, Chat
 
 # Initialise logs 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.WARNING)
@@ -29,7 +32,7 @@ class TelegramChatBot():
         logger.warning('Update "%s" caused error "%s"', upd, context.error)
 
     def help(self, upd, context):
-        context.bot.send_message(chat_id=upd.effective_chat.id, text='Here are the commands you can use for me to help you:\n/help\n/config')
+        context.bot.send_message(chat_id=upd.effective_chat.id, text='Here are the commands you can use for me to help you:\n/help: get the list of commands\n/list: get you the list of keywords that Marabou Bot will look for you\n/add KEYWORD: adds a new keyword to look for\n/remove: removes an existing keyword')
     
     def start(self, upd, context):
         chat_id = self.register_chat_id(upd, context)
@@ -166,7 +169,7 @@ class TelegramChatBot():
         return telegram.utils.helpers.escape_markdown(str, version=2, entity_type=type)
 
     @classmethod
-    def prepare_alert(self, item, chat_IDs):
+    def prepare_alert(self, item, chat_IDs, search_keyword):
         
         # Clean the different elements of the message before sending to Telegram 
         title = self.clean_message_for_telegram(item.title)
@@ -176,11 +179,40 @@ class TelegramChatBot():
         url = self.clean_message_for_telegram(item.url, type="TEXT_LINKS")
 
         message = "*" + title + "*\n[​​​​​​​​​​​]("+ image +")_Price:_ "+ price +"\n_Seller:_ "+ seller +"\n[Open listing in Carousell]("+ url +")"
-
         for chat_ID in chat_IDs:
-            self.updater.dispatcher.bot.sendMessage(chat_id=chat_ID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+            try:
+                self.updater.dispatcher.bot.sendMessage(chat_id=chat_ID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+            except Exception as e:
+                if (str(e) == 'Forbidden: bot was kicked from the group chat'):
+                    print ("Remove a chat ID")
+
+                    # Remove chat ID as it's not valid anymore
+                    chat = TelegramChatBot.session.query(Chat).filter(Chat.chat_id==chat_ID).first()
+                    self.session.delete(chat)
+                    self.session.commit()
+                else:
+                    print ('ERROR: ' + str(e))
+            
+    
+    def log_update(self, u, c):
+        id = str(u.effective_chat.id)
+        message = (
+            'Received a new update event from telegram\n'
+            f'update = {json.dumps(u.to_dict(), indent = 2, ensure_ascii = False)}\n'
+            f'user_data = {json.dumps(c.user_data, indent = 2, ensure_ascii = False)}\n'
+            f'chat_data = {json.dumps(c.chat_data, indent = 2, ensure_ascii = False)}'
+        )
+        logging.info(message)
+        if DEBUG:
+            try:
+                c.bot.send_message(id, html.escape(message), parse_mode = telegram.constants.PARSEMODE_HTML)
+            except Exception as e:
+                print (e)
+
     
     def __init__(self):
+        # self.dispatcher.add_handler(MessageHandler(Filters.update,self.log_update))
+
         # Help handler
         help_handler = CommandHandler("help", self.help)
         self.dispatcher.add_handler(help_handler)

@@ -40,3 +40,6 @@ docker exec -it carousell_alerts /bin/bash
 
 ## Running program in the container
 `python3 main.py`
+
+<!-- Enhancements to be worked on -->
+- Once a group chat is deleted, the application should delete the associated listings which are orpheans
