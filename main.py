@@ -4,4 +4,4 @@ from telegram_chatbot import TelegramChatBot
 
 if __name__ == "__main__":
     TelegramChatBot()
-    CarousellSearch(results=RESULTS_COUNT)    
+    CarousellSearch(results=RESULTS_COUNT)

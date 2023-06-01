@@ -8,13 +8,17 @@ Python 3+
 
 ## Installing
 
-1. `pip3 install -r requirements.txt`
+1. Initiate venv
+    `python3 -m venv venv`
+    `source venv/bin/activate`
 
-2. Create database by running python script "createDB.py"
+2. `pip3 install -r requirements.txt`
+
+3. Create database by running python script "createDB.py"
     `cd Database`
     `python3 createDB.py`
 
-## Configuring
+## Configuring slack (if needed)
 
 Configure `configuration.py` with 
 - your Slack token from https://api.slack.com/tokens
@@ -25,14 +29,14 @@ Ensure that your Slack app has the correct permissions to post in channel
 
 
 ## Creating Docker image
-docker build --no-cache -t koston411/carousell_alerts:v1.1 .
+docker build --no-cache -t koston411/carousell_alerts:v1.2 .
 
 ## Running Docker image the first time
 ## is it necessary to have -it -d as arguments?
-docker run -v /Users/erwan/Documents/Workspace/Carousell\ Alerts/:/usr/src/app --name carousell_alerts -it -d koston411/carousell_alerts:v1.1
+docker run -v /Users/erwan/Documents/Workspace/Carousell\ Alerts/:/usr/src/app --name carousell_alerts -it -d koston411/carousell_alerts:v1.2
 
 ## Push image to Docker Hub
-docker push koston411/carousell_alerts:v1.1
+docker push koston411/carousell_alerts:v1.2
 
 <!-- ACCESS INSIDE THE CONTAINER -->
 ## SSH in the container

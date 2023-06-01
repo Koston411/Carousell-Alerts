@@ -5,6 +5,7 @@ import json
 import os
 import urllib.parse
 import time
+import sys
 from DB_elements import Keyword
 import arrow
 import scrapy
@@ -23,6 +24,7 @@ from urllib.parse import urlparse, unquote
 
 Base = declarative_base()
 
+
 class CarousellSpider(scrapy.Spider):
     name = 'carousell_search'
     allowed_domains = ['www.carousell.sg/']
@@ -36,50 +38,62 @@ class CarousellSpider(scrapy.Spider):
 
     def start_requests(self):
         # Set signals to be able to kill the application
-        signal.signal(signal.SIGINT, self.custom_terminate_spider) #CTRL+C
-        signal.signal(signal.SIGTERM, self.custom_terminate_spider) #sent by scrapyd
+        signal.signal(signal.SIGINT, self.custom_terminate_spider)  # CTRL+C
+        # sent by scrapyd
+        signal.signal(signal.SIGTERM, self.custom_terminate_spider)
 
         # yield scrapy.Request(self.start_urls, self.parse)
         return [scrapy.FormRequest(self.start_urls, self.parse)]
 
     def custom_terminate_spider(self, sig, frame):
-        self.logger.info(self.crawler.stats.get_stats()) #print stats if you want
-    
-        #dangerous line, it will just kill your scrapy spider running immediately
+        self.logger.info(self.crawler.stats.get_stats()
+                         )  # print stats if you want
+
+        # dangerous line, it will just kill your scrapy spider running immediately
         os.kill(os.getpid(), signal.SIGKILL)
 
     def parse(self, response):
-        responseExtract = re.search(r'window.initialState=.*</script>', response.text)[0]
-        responseExtract = responseExtract.replace("window.initialState=", "")
-        data = responseExtract.replace("</script>", "")
-        json_obj = json.loads(data)
-        searchItems = json_obj['SearchListing']['listingCards']
+        responseExtract = re.search(
+            r'<script type="application/json">.*?</script>', response.text)
 
-        if (searchItems):
-            for item in searchItems:
-                # Select only the items which are not promoted by Carousell
-                if not 'promoted' in item:
-                    is_item_valid = False
-                    for search_keyword in self.db_keywords:
-                        search_keyword = search_keyword.lower()
-                        title = item['title'].lower()
+        if (responseExtract is None):
+            print("ERROR: The format of the HTML response might have changed, look into pycaroussel.py in parse function")
+        else:
+            responseExtract = responseExtract[0]
+            responseExtract = responseExtract.replace(
+                "<script type=\"application/json\">", "")
+            responseExtract = responseExtract.replace("</script>", "")
 
-                        if any(word in title for word in search_keyword.split()):
-                            is_item_valid = True
+            json_obj = json.loads(responseExtract)
+            searchItems = json_obj['SearchListing']['listingCards']
+
+            if (searchItems):
+                for item in searchItems:
+                    # Select only the items which are not promoted by Carousell
+                    if not 'promoted' in item:
+                        is_item_valid = False
+                        for search_keyword in self.db_keywords:
+                            search_keyword = search_keyword.lower()
+                            title = item['title'].lower()
+
+                            if any(word in title for word in search_keyword.split()):
+                                is_item_valid = True
+                                yield item
+                                break
+
+                        if is_item_valid == False:
+                            # print ('<<<<<<<<<<<<<<<<<<<<<<<<<<< ' + search_keyword + ' NOT in title')
+                            # print (title)
+                            item['title'] = '? ' + item['title']
+                            # print (response.request)
                             yield item
-                            break
-
-                    if is_item_valid == False:
-                        # print ('<<<<<<<<<<<<<<<<<<<<<<<<<<< ' + search_keyword + ' NOT in title')
-                        # print (title)
-                        item['title'] = '? ' + item['title']
-                        # print (response.request)
-                        yield item
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
-        spider = super(CarousellSpider, cls).from_crawler(crawler, *args, **kwargs)
-        crawler.signals.connect(spider.item_scraped, signal=signals.item_scraped)
+        spider = super(CarousellSpider, cls).from_crawler(
+            crawler, *args, **kwargs)
+        crawler.signals.connect(spider.item_scraped,
+                                signal=signals.item_scraped)
         return spider
 
     def create_item_url(self, item_id, item_title):
@@ -88,9 +102,8 @@ class CarousellSpider(scrapy.Spider):
         title_url = urllib.parse.quote(title_url)
         return base_url + title_url + '-' + item_id
 
-
     def item_scraped(self, item, response):
-        # Get keyword from URL 
+        # Get keyword from URL
         path = urlparse(response.url).path
         path = unquote(path)
         search_keyword = path.split('/')[2]
@@ -100,8 +113,9 @@ class CarousellSpider(scrapy.Spider):
         listing_item.platform = 'Carousell'
         listing_item.title = item['title']
         listing_item.price = item['price']
-        listing_item.url = self.create_item_url(str(item['listingID']), item['title'])
-        listing_item.listing_id = str(item['listingID'])            
+        listing_item.url = self.create_item_url(
+            str(item['listingID']), item['title'])
+        listing_item.listing_id = str(item['listingID'])
         listing_item.seller = item['seller']['username']
         if 'photoItem' in item['media'][0]:
             listing_item.image = item['media'][0]['photoItem']['url']
@@ -111,7 +125,8 @@ class CarousellSpider(scrapy.Spider):
         # Process the item to send a notification
         process = Processing_items()
         process.start_process_items(listing_item, search_keyword)
-        
+
+
 class CarousellSearch(object):
     engine = create_engine('sqlite:///Database/marabou_alert.db')
     Base.metadata.create_all(engine)
@@ -121,20 +136,23 @@ class CarousellSearch(object):
     def __init__(self, results=30):
 
         db_keywords = []
-    
+
         runner = CrawlerRunner()
-        
 
         def generate_search_urls():
             self.base_url = ("https://www.carousell.sg/search/")
-            params = {'addRecent': 'false', 'canChangeKeyword': 'false', 'includeSuggestions': 'false', 'sort_by': '3'}
+            params = {'addRecent': 'false', 'canChangeKeyword': 'false',
+                      'includeSuggestions': 'false', 'sort_by': '3'}
 
             # Get keywords from DB
-            self.db_keywords = [keyword_obj.keyword_str for keyword_obj in self.session.query(Keyword).all()]
-            
+            self.db_keywords = [
+                keyword_obj.keyword_str for keyword_obj in self.session.query(Keyword).all()]
+
             urls = []
             for search in self.db_keywords:
-                query_url = self.base_url + urllib.parse.quote(search) + "?" + urllib.parse.urlencode(params)
+                query_url = self.base_url + \
+                    urllib.parse.quote(search) + "?" + \
+                    urllib.parse.urlencode(params)
                 urls.append(query_url)
 
             return urls
@@ -143,7 +161,8 @@ class CarousellSearch(object):
         def crawl():
 
             # Remove unused keywords in DB
-            db_keywords = self.session.query(Keyword).filter(~Keyword.chats.any()).all()
+            db_keywords = self.session.query(
+                Keyword).filter(~Keyword.chats.any()).all()
             for keyword_obj in db_keywords:
                 self.session.delete(keyword_obj)
             self.session.commit()
@@ -154,15 +173,15 @@ class CarousellSearch(object):
                 # print ("url: " + url)
 
                 # Time stamp
-	            # time = arrow.get(item['time_indexed']).format('DD/MM/YYYY HH:MM')
+                # time = arrow.get(item['time_indexed']).format('DD/MM/YYYY HH:MM')
                 date = arrow.now()
                 # print ("Call loop at " + str(date))
-                yield runner.crawl(CarousellSpider, urls = url, keywords = self.db_keywords)
+                yield runner.crawl(CarousellSpider, urls=url, keywords=self.db_keywords)
             # reactor.stop()
             # print ("Waiting for next search in " + FREQUENCY + " seconds...")
             time.sleep(FREQUENCY)
             # time.sleep(int(os.getenv('SLEEP_TIME')))
             crawl()
-            
+
         crawl()
         reactor.run()
