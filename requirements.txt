@@ -2,5 +2,5 @@ arrow
 sqlalchemy
 requests
 slack_sdk
-scrapy==2.6.*
+scrapy==2.10.*
 python-telegram-bot==13.*
