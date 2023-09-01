@@ -39,12 +39,23 @@ def crawl(runner):
 def loop_crawl():
     runner = CrawlerRunner(get_project_settings())
     crawl(runner)
-    reactor.run()    
+    reactor.run()
+
+
+def getKeywordFromDB(session):
+    # Get keywords from DB
+    db_keywords = [
+        keyword_obj.keyword_str for keyword_obj in session.query(Keyword).all()]
+
+    print('--------------------------db_keywords')
+    print(db_keywords)
+    return db_keywords
+
 
 class CarousellSpider(scrapy.Spider):
     name = 'carousell_search'
     allowed_domains = ['www.carousell.sg/']
-    
+
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -64,40 +75,35 @@ class CarousellSpider(scrapy.Spider):
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    # Remove unused keywords in DB
-    db_keywords = session.query(Keyword).filter(~Keyword.chats.any()).all()
-    for keyword_obj in db_keywords:
-        session.delete(keyword_obj)
-    session.commit()
+    # # Remove unused keywords in DB
+    # db_keywords = session.query(Keyword).filter(~Keyword.chats.any()).all()
+    # for keyword_obj in db_keywords:
+    #     session.delete(keyword_obj)
+    # session.commit()
 
     def generate_search_urls(session):
         base_url = ("https://www.carousell.sg/search/")
-        params = {'addRecent': 'false', 'canChangeKeyword': 'false', 'includeSuggestions': 'false', 'sort_by': '3'}
-
-        # Get keywords from DB
-        db_keywords = [keyword_obj.keyword_str for keyword_obj in session.query(Keyword).all()]
-
-        print ('--------------------------db_keywords')
-        print (db_keywords)
-            
+        params = {'addRecent': 'false', 'canChangeKeyword': 'false',
+                  'includeSuggestions': 'false', 'sort_by': '3'}
         urls = []
-        for search in db_keywords:
+        for search in getKeywordFromDB(session):
             query_url = base_url + \
-            urllib.parse.quote(search) + "?" + \
-            urllib.parse.urlencode(params)
+                urllib.parse.quote(search) + "?" + \
+                urllib.parse.urlencode(params)
             urls.append(query_url)
 
         return urls
 
     def start_requests(self):
-        print ('++++++++++++++++++++++++++++++++++++++++++++++++++start_requests')
+        print('++++++++++++++++++++++++++++++++++++++++++++++++++start_requests')
+        print(self.start_urls)
         # URL = 'https://www.carousell.sg/search/troller?addRecent=false&canChangeKeyword=false&includeSuggestions=false&sort_by=3'
         if (self.start_urls):
-            yield scrapy.Request(url=self.start_urls, callback=self.response_parser, headers=self.HEADERS)
+            yield scrapy.Request(url=self.start_urls[0], callback=self.response_parser, headers=self.HEADERS)
 
     def response_parser(self, response):
-        print ('---------1')
-        responseExtract = re.search(r'<script type="application/json">.*?</script>', response.text)
+        responseExtract = re.search(
+            r'<script type="application/json">.*?</script>', response.text)
         if (responseExtract is None):
             print("ERROR: The format of the HTML response might have changed, look into pycaroussel.py in parse function")
         else:
@@ -114,11 +120,13 @@ class CarousellSpider(scrapy.Spider):
                     # Select only the items which are NOT promoted by Carousell
                     if not 'promoted' in item:
                         is_item_valid = False
-                        for search_keyword in self.db_keywords:
-                            print ('---------3')
+                        print('---------1')
+                        print(getKeywordFromDB(self.session))
+                        for search_keyword in getKeywordFromDB(self.session):
+                            print('---------3')
                             search_keyword = search_keyword.lower()
                             title = item['title'].lower()
-                            print (title)
+                            print(title)
 
                             if any(word in title for word in search_keyword.split()):
                                 is_item_valid = True
@@ -133,6 +141,7 @@ class CarousellSpider(scrapy.Spider):
                             yield item
 
     start_urls = generate_search_urls(session)
+
 
 class CarousellSearch():
     def __init__(self, results=30):

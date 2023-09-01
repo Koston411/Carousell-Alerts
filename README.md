@@ -4,19 +4,22 @@ Getting near real-time notifications on Carousell.
 
 ## Requirements
 
-Python 3+
+Python 3.8
 
 ## Installing
 
-1. Initiate venv
-    `python3 -m venv venv`
-    `source venv/bin/activate`
+1. `pyenv install 3.8`
+   `pyenv local 3.8.x`
 
-2. `pip3 install -r requirements.txt`
+2. Initiate venv
+    `pyenv python -m venv .venv`
+    `source .venv/bin/activate`
 
-3. Create database by running python script "createDB.py"
+3. `pip install -r requirements.txt`
+
+4. Create database by running python script "createDB.py"
     `cd Database`
-    `python3 createDB.py`
+    `python createDB.py`
 
 ## Configuring slack (if needed)
 

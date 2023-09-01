@@ -2,6 +2,6 @@
 # SLACK_CHANNEL = ("#carousell_iphone")
 
 RESULTS_COUNT = 2
-FREQUENCY = 60
+FREQUENCY = 10
 
 DEBUG = True
