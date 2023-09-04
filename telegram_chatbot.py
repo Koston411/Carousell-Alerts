@@ -96,36 +96,28 @@ class TelegramChatBot():
 
     def add_keyword(self, upd, context):
         try:
+            print('tetestststs')
             id = str(upd.effective_chat.id)
 
             # Extract the keyword from the received bot command
             keyword_string = ' '.join(context.args).lower()
-            message = '*_' + \
-                self.clean_message_for_telegram(
-                    keyword_string) + '_* is added to your list of keywords'
+
+            message = 'Do you want to add "' + keyword_string + '" without filter?'
+
+            data = 'add1' + "|" + keyword_string
+            buttons = [[InlineKeyboardButton("OK", callback_data=data)],
+                       [InlineKeyboardButton("Add filters", callback_data=data)]]
+
+            reply_markup = InlineKeyboardMarkup(buttons)
             context.bot.send_message(
-                chat_id=id, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
-
-            # Create chat DB object to associate it to the keyword
-            chat = TelegramChatBot.session.query(
-                Chat).filter(Chat.chat_id == id).first()
-
-            # Add keyword in DB if it doesn't exist
-            keyword = self.session.query(Keyword).filter_by(
-                keyword_str=keyword_string).first()
-            if not keyword:
-                keyword = Keyword(keyword_str=keyword_string)
-                TelegramChatBot.session.add(keyword)
-
-            chat.keywords.append(keyword)
-            TelegramChatBot.session.commit()
+                chat_id=id, text=message, reply_markup=reply_markup)
 
         except (IndexError, ValueError):
             upd.message.reply_text('Error, the search query is not added')
 
     def list_keywords(self, upd, context):
         id = str(upd.effective_chat.id)
-        chat = TelegramChatBot.session.query(
+        chat = self.session.query(
             Chat).filter(Chat.chat_id == id).first()
 
         keyword_str = 'Your search keywords:\n'
@@ -141,7 +133,7 @@ class TelegramChatBot():
 
     def remove_keyword(self, upd, context):
         id = str(upd.effective_chat.id)
-        chat = TelegramChatBot.session.query(
+        chat = self.session.query(
             Chat).filter(Chat.chat_id == id).first()
 
         message = 'Select the keyword you want to remove:'
@@ -150,7 +142,7 @@ class TelegramChatBot():
             message = 'No keyword to delete'
         else:
             for keyword in chat.keywords:
-                data = str(keyword.id) + "," + str(chat.id)
+                data = 'rmKey' + "|" + str(keyword.id)
                 buttons.append([InlineKeyboardButton(
                     keyword.keyword_str, callback_data=data)])
 
@@ -159,30 +151,64 @@ class TelegramChatBot():
             chat_id=id, text=message, reply_markup=reply_markup)
 
     def callback(self, upd, context):
-        callback_data = upd.callback_query.data
-        if upd.callback_query.message is None:
-            upd.answer_callback_query(
-                callback_query_id=upd.callback_query.id
-            )
-            return
+        print(upd)
+        print('---------------------------')
+
+        args = upd.callback_query.data.split('|')
+
+        chatID = upd.effective_chat.id
+
+        # if upd.callback_query.message is None:
+        #     upd.answer_callback_query(
+        #         callback_query_id=upd.callback_query.id
+        #     )
+        #     return
+
+        # Get the type of the action requested
+        if (args[0] == 'add1'):
+            message = '*_' + self.clean_message_for_telegram(
+                args[1]) + '_* is added to your list of keywords'
+
+            context.bot.send_message(
+                chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+
+            # Create chat DB object to associate it to the keyword
+            chat = self.session.query(
+                Chat).filter(Chat.chat_id == chatID).first()
+
+            # Add keyword in DB if it doesn't exist
+            keyword = self.session.query(Keyword).filter_by(
+                keyword_str=args[1]).first()
+
+            if not keyword:
+                keyword = Keyword(keyword_str=args[1])
+                self.session.add(keyword)
+
+            chat.keywords.append(keyword)
+            self.session.commit()
+
+        elif (args[0] == 'rmKey'):
+            # callback_data = upd.callback_query.data
+            if upd.callback_query.message is None:
+                upd.answer_callback_query(
+                    callback_query_id=upd.callback_query.id
+                )
+                return
         # origin_message_id = upd.callback_query.message.message_id
         # chat_id = upd.callback_query.message.chat_id
         # user_id = upd.callback_query.from_user.id
-        args = callback_data.split(',')
 
-        keyword_id = args[0]
-        keyword = TelegramChatBot.session.query(
+        keyword_id = args[1]
+        keyword = self.session.query(
             Keyword).filter(Keyword.id == keyword_id).first()
-
-        chat_id = args[1]
-        chat = TelegramChatBot.session.query(
-            Chat).filter(Chat.id == chat_id).first()
+        chat = self.session.query(
+            Chat).filter(Chat.chat_id == chatID).first()
 
         message = "%s has been removed" % keyword.keyword_str
-        context.bot.send_message(chat_id=upd.effective_chat.id, text=message)
+        context.bot.send_message(chat_id=chatID, text=message)
 
         keyword.chats.remove(chat)
-        TelegramChatBot.session.commit()
+        self.session.commit()
 
     @classmethod
     def clean_message_for_telegram(self, str, type=''):
@@ -210,7 +236,7 @@ class TelegramChatBot():
                     print("Remove a chat ID")
 
                     # Remove chat ID as it's not valid anymore
-                    chat = TelegramChatBot.session.query(
+                    chat = self.session.query(
                         Chat).filter(Chat.chat_id == chat_ID).first()
                     self.session.delete(chat)
                     self.session.commit()
