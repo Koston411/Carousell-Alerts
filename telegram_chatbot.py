@@ -144,11 +144,35 @@ class TelegramChatBot():
             for keyword in chat.keywords:
                 data = 'rmKey' + "|" + str(keyword.id)
                 buttons.append([InlineKeyboardButton(
-                    keyword.keyword_str, callback_data=data)])
+                    keyword.keyword_str, callback_data=str(json.dumps(data)))])
 
         reply_markup = InlineKeyboardMarkup(buttons)
         context.bot.send_message(
             chat_id=id, text=message, reply_markup=reply_markup)
+
+    # def remove_keyword(self, upd, context):
+    #     id = str(upd.effective_chat.id)
+    #     chat = TelegramChatBot.session.query(
+    #         Chat).filter(Chat.chat_id == id).first()
+
+    #     message = 'Select the keyword you want to remove:'
+    #     buttons = []
+    #     if (len(chat.keywords) == 0):
+    #         message = 'No keyword to delete'
+    #     else:
+    #         for keyword in chat.keywords:
+        # data = {
+        #     "actionType": "removeKeyword",
+        #     "chatID": chat.id,
+        #     "keyword": keyword.keyword_str
+        # }
+
+    #             buttons.append([InlineKeyboardButton(
+    #                 keyword.keyword_str, callback_data=json.dumps(data))])
+
+    #     reply_markup = InlineKeyboardMarkup(buttons)
+    #     context.bot.send_message(
+    #         chat_id=id, text=message, reply_markup=reply_markup)
 
     def callback(self, upd, context):
         print(upd)

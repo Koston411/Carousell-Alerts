@@ -81,6 +81,7 @@ class CarousellSpider(scrapy.Spider):
                 urllib.parse.urlencode(params)
             urls.append(query_url)
 
+        print('000000000000000000000000000000000')
         print("generate_search_urls")
 
         return urls
