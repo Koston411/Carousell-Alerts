@@ -144,7 +144,7 @@ class TelegramChatBot():
             for keyword in chat.keywords:
                 data = 'rmKey' + "|" + str(keyword.id)
                 buttons.append([InlineKeyboardButton(
-                    keyword.keyword_str, callback_data=str(json.dumps(data)))])
+                    keyword.keyword_str, callback_data=data)])
 
         reply_markup = InlineKeyboardMarkup(buttons)
         context.bot.send_message(
@@ -179,9 +179,9 @@ class TelegramChatBot():
         print('---------------------------')
 
         args = upd.callback_query.data.split('|')
-
+        print('--------------------------1')
         chatID = upd.effective_chat.id
-
+        print('--------------------------2')
         # if upd.callback_query.message is None:
         #     upd.answer_callback_query(
         #         callback_query_id=upd.callback_query.id
@@ -192,47 +192,54 @@ class TelegramChatBot():
         if (args[0] == 'add1'):
             message = '*_' + self.clean_message_for_telegram(
                 args[1]) + '_* is added to your list of keywords'
-
+            print('--------------------------3')
             context.bot.send_message(
                 chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+            print('--------------------------4')
 
             # Create chat DB object to associate it to the keyword
             chat = self.session.query(
                 Chat).filter(Chat.chat_id == chatID).first()
+            print('--------------------------5')
 
             # Add keyword in DB if it doesn't exist
             keyword = self.session.query(Keyword).filter_by(
                 keyword_str=args[1]).first()
+            print('--------------------------6')
 
             if not keyword:
                 keyword = Keyword(keyword_str=args[1])
                 self.session.add(keyword)
-
+            print('--------------------------7')
+            print(keyword)
             chat.keywords.append(keyword)
             self.session.commit()
 
         elif (args[0] == 'rmKey'):
             # callback_data = upd.callback_query.data
+            print('--------------------------8')
             if upd.callback_query.message is None:
+                print('--------------------------9')
                 upd.answer_callback_query(
                     callback_query_id=upd.callback_query.id
                 )
                 return
-        # origin_message_id = upd.callback_query.message.message_id
-        # chat_id = upd.callback_query.message.chat_id
-        # user_id = upd.callback_query.from_user.id
+            # origin_message_id = upd.callback_query.message.message_id
+            # chat_id = upd.callback_query.message.chat_id
+            # user_id = upd.callback_query.from_user.id
 
-        keyword_id = args[1]
-        keyword = self.session.query(
-            Keyword).filter(Keyword.id == keyword_id).first()
-        chat = self.session.query(
-            Chat).filter(Chat.chat_id == chatID).first()
+            print('--------------------------9A')
+            keyword_id = args[1]
+            keyword = self.session.query(
+                Keyword).filter(Keyword.id == keyword_id).first()
+            chat = self.session.query(
+                Chat).filter(Chat.chat_id == chatID).first()
 
-        message = "%s has been removed" % keyword.keyword_str
-        context.bot.send_message(chat_id=chatID, text=message)
+            message = "%s has been removed" % keyword.keyword_str
+            context.bot.send_message(chat_id=chatID, text=message)
 
-        keyword.chats.remove(chat)
-        self.session.commit()
+            keyword.chats.remove(chat)
+            self.session.commit()
 
     @classmethod
     def clean_message_for_telegram(self, str, type=''):
