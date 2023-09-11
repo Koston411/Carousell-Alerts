@@ -65,7 +65,6 @@ class CarousellSpider(scrapy.Spider):
             query_url = base_url + urllib.parse.quote(search.keyword_str) + "?" + urllib.parse.urlencode(params)
             if (search.filter_str):
                 query_url += '&price_end=' + search.filter_str
-            print(query_url)
             urls.append(query_url)
         return urls
 
@@ -109,12 +108,14 @@ class CarousellSpider(scrapy.Spider):
 
             searchItems = json_obj['SearchListing']['listingCards']
             if (searchItems):
-                DB_keyword_obj = getKeywordFromDB(self.session).keyword_str
+                DB_keyword_obj = getKeywordFromDB(self.session)
+                db_keywords = [keyword_obj.keyword_str for keyword_obj in DB_keyword_obj]
+                
                 for item in searchItems:
                     # Select only the items which are NOT promoted by Carousell
                     if not 'promoted' in item and item['listingID'] > 0:
                         is_item_valid = False
-                        for search_keyword in DB_keyword_obj:
+                        for search_keyword in db_keywords:
                             search_keyword = search_keyword.lower()
                             title = item['title'].lower()
 
