@@ -31,6 +31,8 @@ class TelegramChatBot():
     Session = sessionmaker(bind=engine)
     session = Session()
 
+    setup_keyword_status = {}
+
     def error(self, upd, context):
         logger.warning('Update "%s" caused error "%s"', upd, context.error)
 
@@ -61,14 +63,21 @@ class TelegramChatBot():
                 " !!! I'm Marabou Bot to help you be alerted if I find new listings on Carousell. Type /help if you want to know how to work with me"
             context.bot.send_message(chat_id=chat_id, text=message)
 
-    # def start(upd: Update, context: CallbackContext):
-    #     context.bot.send_message(chat_id=upd.effective_chat.id, text="Heya! I'm Marabou bot and I just woke up")
-
     def unknown(self, upd, context):
-        context.bot.send_message(chat_id=upd.effective_chat.id,
-                                 text="Sorry, I don't speak your language. You can type /help to learn about the commands I know")
-        # upd.message.reply_text(upd.message.text)
+        if (not self.setup_keyword_status):
+            context.bot.send_message(chat_id=upd.effective_chat.id,text="Sorry, I don't speak your language. You can type /help to learn about the commands I know")
+        elif (self.setup_keyword_status['action'] == 'addKeyword'):
+            chatID = upd.effective_chat.id
 
+            # Check if the messsage sent by the user is a number
+            if (upd['message']['text'].isnumeric()):
+                self.setup_keyword_status['filter'] = upd['message']['text']
+                self.add_keyword_in_DB(chatID, context)
+            else:
+                message = 'Come on bro, just enter digits\! You think I deal with that currency\!\!'
+                context.bot.send_message(
+                    chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+            
     def register_chat_id(self, upd, context):
         id = str(upd.effective_chat.id)
 
@@ -93,39 +102,64 @@ class TelegramChatBot():
         self.session.commit()
 
         return id
+    
+    def add_keyword_in_DB(self, chatID, context):
+        # Create chat DB object to associate it to the keyword
+        chat = self.session.query(Chat).filter(Chat.chat_id == chatID).first()
+        
+        # Set the keyword string to be inserted in DB
+        keyword_str = self.setup_keyword_status['keyword']
 
-    def add_keyword(self, upd, context):
+        # Set the filter string to be inserted in DB if it is given by user
+        filter_str = ''
+        if ('filter' in self.setup_keyword_status):
+            filter_str = self.setup_keyword_status['filter']
+        
+        # Add keyword in DB if it doesn't exist
+        keyword_obj = self.session.query(Keyword).filter_by(
+                keyword_str=keyword_str).first()
+        
+        if not keyword_obj:
+            keyword_obj = Keyword(keyword_str=keyword_str, filter_str=filter_str)
+            self.session.add(keyword_obj)
+
+        chat.keywords.append(keyword_obj)
+        self.session.commit()
+
+        message = '*_' + self.clean_message_for_telegram(keyword_str) + '_* is added to your list of keywords'
+        context.bot.send_message(chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+
+        self.setup_keyword_status = {}
+
+    def add_keyword_command(self, upd, context):
         try:
+            # Set the keyword status worklow to None
+            self.setup_keyword_status['action'] = 'addKeyword'
+
             id = str(upd.effective_chat.id)
 
             # Extract the keyword from the received bot command
             keyword_string = ' '.join(context.args).lower()
-            message = '*_' + \
-                self.clean_message_for_telegram(
-                    keyword_string) + '_* is added to your list of keywords'
+
+            message = 'Do you want to add "' + keyword_string + '" without filter?'
+
+            data = 'add1' + "|" + keyword_string
+            buttons = [[InlineKeyboardButton("OK", callback_data=data + "|ok")],
+                       [InlineKeyboardButton("Add filters", callback_data=data + "|filtr")]]
+
+            reply_markup = InlineKeyboardMarkup(buttons)
             context.bot.send_message(
-                chat_id=id, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
-
-            # Create chat DB object to associate it to the keyword
-            chat = TelegramChatBot.session.query(
-                Chat).filter(Chat.chat_id == id).first()
-
-            # Add keyword in DB if it doesn't exist
-            keyword = self.session.query(Keyword).filter_by(
-                keyword_str=keyword_string).first()
-            if not keyword:
-                keyword = Keyword(keyword_str=keyword_string)
-                TelegramChatBot.session.add(keyword)
-
-            chat.keywords.append(keyword)
-            TelegramChatBot.session.commit()
+                chat_id=id, text=message, reply_markup=reply_markup)
 
         except (IndexError, ValueError):
             upd.message.reply_text('Error, the search query is not added')
 
     def list_keywords(self, upd, context):
+        # Set the keyword status worklow to None
+        self.setup_keyword_status = {}
+
         id = str(upd.effective_chat.id)
-        chat = TelegramChatBot.session.query(
+        chat = self.session.query(
             Chat).filter(Chat.chat_id == id).first()
 
         keyword_str = 'Your search keywords:\n'
@@ -140,8 +174,11 @@ class TelegramChatBot():
             chat_id=id, text=keyword_str, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
 
     def remove_keyword(self, upd, context):
+        # Set the keyword status worklow to None
+        self.setup_keyword_status = {}
+
         id = str(upd.effective_chat.id)
-        chat = TelegramChatBot.session.query(
+        chat = self.session.query(
             Chat).filter(Chat.chat_id == id).first()
 
         message = 'Select the keyword you want to remove:'
@@ -150,7 +187,7 @@ class TelegramChatBot():
             message = 'No keyword to delete'
         else:
             for keyword in chat.keywords:
-                data = str(keyword.id) + "," + str(chat.id)
+                data = 'rmKey' + "|" + str(keyword.id)
                 buttons.append([InlineKeyboardButton(
                     keyword.keyword_str, callback_data=data)])
 
@@ -159,30 +196,41 @@ class TelegramChatBot():
             chat_id=id, text=message, reply_markup=reply_markup)
 
     def callback(self, upd, context):
-        callback_data = upd.callback_query.data
-        if upd.callback_query.message is None:
-            upd.answer_callback_query(
-                callback_query_id=upd.callback_query.id
-            )
-            return
-        # origin_message_id = upd.callback_query.message.message_id
-        # chat_id = upd.callback_query.message.chat_id
-        # user_id = upd.callback_query.from_user.id
-        args = callback_data.split(',')
 
-        keyword_id = args[0]
-        keyword = TelegramChatBot.session.query(
-            Keyword).filter(Keyword.id == keyword_id).first()
+        args = upd.callback_query.data.split('|')
+        chatID = upd.effective_chat.id
 
-        chat_id = args[1]
-        chat = TelegramChatBot.session.query(
-            Chat).filter(Chat.id == chat_id).first()
+        # Get the type of the action requested
+        if (args[0] == 'add1' and args[2] == 'ok'):
+            self.setup_keyword_status['keyword'] = args[1]
+            self.add_keyword_in_DB(chatID, context)
 
-        message = "%s has been removed" % keyword.keyword_str
-        context.bot.send_message(chat_id=upd.effective_chat.id, text=message)
+        elif (args[0] == 'add1' and args[2] == 'filtr'):
+            self.setup_keyword_status['keyword'] = args[1]
 
-        keyword.chats.remove(chat)
-        TelegramChatBot.session.commit()
+            message = 'What is the maximum price you want to pay for your ' + self.clean_message_for_telegram(
+                args[1]) + '?'
+            context.bot.send_message(
+                chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+
+        elif (args[0] == 'rmKey'):
+            if upd.callback_query.message is None:
+                upd.answer_callback_query(
+                    callback_query_id=upd.callback_query.id
+                )
+                return
+
+            keyword_id = args[1]
+            keyword = self.session.query(
+                Keyword).filter(Keyword.id == keyword_id).first()
+            chat = self.session.query(
+                Chat).filter(Chat.chat_id == chatID).first()
+
+            message = "%s has been removed" % keyword.keyword_str
+            context.bot.send_message(chat_id=chatID, text=message)
+
+            keyword.chats.remove(chat)
+            self.session.commit()
 
     @classmethod
     def clean_message_for_telegram(self, str, type=''):
@@ -207,10 +255,8 @@ class TelegramChatBot():
                     chat_id=chat_ID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
             except Exception as e:
                 if (str(e) == 'Forbidden: bot was kicked from the group chat'):
-                    print("Remove a chat ID")
-
                     # Remove chat ID as it's not valid anymore
-                    chat = TelegramChatBot.session.query(
+                    chat = self.session.query(
                         Chat).filter(Chat.chat_id == chat_ID).first()
                     self.session.delete(chat)
                     self.session.commit()
@@ -234,7 +280,6 @@ class TelegramChatBot():
                 print(e)
 
     def __init__(self):
-        # self.dispatcher.add_handler(MessageHandler(Filters.update,self.log_update))
 
         # Help handler
         help_handler = CommandHandler("help", self.help)
@@ -245,7 +290,7 @@ class TelegramChatBot():
         self.dispatcher.add_handler(start_handler)
 
         # Add keyword handler
-        add_handler = CommandHandler("add", self.add_keyword)
+        add_handler = CommandHandler("add", self.add_keyword_command)
         self.dispatcher.add_handler(add_handler)
 
         # Remove keyword handler
