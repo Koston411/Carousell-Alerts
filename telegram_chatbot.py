@@ -31,6 +31,8 @@ class TelegramChatBot():
     Session = sessionmaker(bind=engine)
     session = Session()
 
+    setup_keyword_status = {}
+
     def error(self, upd, context):
         logger.warning('Update "%s" caused error "%s"', upd, context.error)
 
@@ -62,9 +64,20 @@ class TelegramChatBot():
             context.bot.send_message(chat_id=chat_id, text=message)
 
     def unknown(self, upd, context):
-        context.bot.send_message(chat_id=upd.effective_chat.id,
-                                 text="Sorry, I don't speak your language. You can type /help to learn about the commands I know")
+        if (not self.setup_keyword_status):
+            context.bot.send_message(chat_id=upd.effective_chat.id,text="Sorry, I don't speak your language. You can type /help to learn about the commands I know")
+        elif (self.setup_keyword_status['action'] == 'addKeyword'):
+            chatID = upd.effective_chat.id
 
+            # Check if the messsage sent by the user is a number
+            if (upd['message']['text'].isnumeric()):
+                self.setup_keyword_status['filter'] = upd['message']['text']
+                self.add_keyword_in_DB(chatID, context)
+            else:
+                message = 'Come on bro, just enter digits\! You think I deal with that currency\!\!'
+                context.bot.send_message(
+                    chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+            
     def register_chat_id(self, upd, context):
         id = str(upd.effective_chat.id)
 
@@ -89,9 +102,40 @@ class TelegramChatBot():
         self.session.commit()
 
         return id
+    
+    def add_keyword_in_DB(self, chatID, context):
+        # Create chat DB object to associate it to the keyword
+        chat = self.session.query(Chat).filter(Chat.chat_id == chatID).first()
+        
+        # Set the keyword string to be inserted in DB
+        keyword_str = self.setup_keyword_status['keyword']
 
-    def add_keyword(self, upd, context):
+        # Set the filter string to be inserted in DB if it is given by user
+        filter_str = ''
+        if ('filter' in self.setup_keyword_status):
+            filter_str = self.setup_keyword_status['filter']
+        
+        # Add keyword in DB if it doesn't exist
+        keyword_obj = self.session.query(Keyword).filter_by(
+                keyword_str=keyword_str).first()
+        
+        if not keyword_obj:
+            keyword_obj = Keyword(keyword_str=keyword_str, filter_str=filter_str)
+            self.session.add(keyword_obj)
+
+        chat.keywords.append(keyword_obj)
+        self.session.commit()
+
+        message = '*_' + self.clean_message_for_telegram(keyword_str) + '_* is added to your list of keywords'
+        context.bot.send_message(chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
+
+        self.setup_keyword_status = {}
+
+    def add_keyword_command(self, upd, context):
         try:
+            # Set the keyword status worklow to None
+            self.setup_keyword_status['action'] = 'addKeyword'
+
             id = str(upd.effective_chat.id)
 
             # Extract the keyword from the received bot command
@@ -100,8 +144,8 @@ class TelegramChatBot():
             message = 'Do you want to add "' + keyword_string + '" without filter?'
 
             data = 'add1' + "|" + keyword_string
-            buttons = [[InlineKeyboardButton("OK", callback_data=data)],
-                       [InlineKeyboardButton("Add filters", callback_data=data)]]
+            buttons = [[InlineKeyboardButton("OK", callback_data=data + "|ok")],
+                       [InlineKeyboardButton("Add filters", callback_data=data + "|filtr")]]
 
             reply_markup = InlineKeyboardMarkup(buttons)
             context.bot.send_message(
@@ -111,6 +155,9 @@ class TelegramChatBot():
             upd.message.reply_text('Error, the search query is not added')
 
     def list_keywords(self, upd, context):
+        # Set the keyword status worklow to None
+        self.setup_keyword_status = {}
+
         id = str(upd.effective_chat.id)
         chat = self.session.query(
             Chat).filter(Chat.chat_id == id).first()
@@ -127,6 +174,9 @@ class TelegramChatBot():
             chat_id=id, text=keyword_str, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
 
     def remove_keyword(self, upd, context):
+        # Set the keyword status worklow to None
+        self.setup_keyword_status = {}
+
         id = str(upd.effective_chat.id)
         chat = self.session.query(
             Chat).filter(Chat.chat_id == id).first()
@@ -151,28 +201,19 @@ class TelegramChatBot():
         chatID = upd.effective_chat.id
 
         # Get the type of the action requested
-        if (args[0] == 'add1'):
-            message = '*_' + self.clean_message_for_telegram(
-                args[1]) + '_* is added to your list of keywords'
+        if (args[0] == 'add1' and args[2] == 'ok'):
+            self.setup_keyword_status['keyword'] = args[1]
+            self.add_keyword_in_DB(chatID, context)
+
+        elif (args[0] == 'add1' and args[2] == 'filtr'):
+            self.setup_keyword_status['keyword'] = args[1]
+
+            message = 'What is the maximum price you want to pay for your ' + self.clean_message_for_telegram(
+                args[1]) + '?'
             context.bot.send_message(
                 chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
 
-            # Create chat DB object to associate it to the keyword
-            chat = self.session.query(
-                Chat).filter(Chat.chat_id == chatID).first()
-
-            # Add keyword in DB if it doesn't exist
-            keyword = self.session.query(Keyword).filter_by(
-                keyword_str=args[1]).first()
-
-            if not keyword:
-                keyword = Keyword(keyword_str=args[1])
-                self.session.add(keyword)
-            chat.keywords.append(keyword)
-            self.session.commit()
-
         elif (args[0] == 'rmKey'):
-            # callback_data = upd.callback_query.data
             if upd.callback_query.message is None:
                 upd.answer_callback_query(
                     callback_query_id=upd.callback_query.id
@@ -249,7 +290,7 @@ class TelegramChatBot():
         self.dispatcher.add_handler(start_handler)
 
         # Add keyword handler
-        add_handler = CommandHandler("add", self.add_keyword)
+        add_handler = CommandHandler("add", self.add_keyword_command)
         self.dispatcher.add_handler(add_handler)
 
         # Remove keyword handler

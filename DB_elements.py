@@ -41,6 +41,7 @@ class Keyword(Base):
 
     id = Column(Integer, primary_key=True)
     keyword_str = Column(String)
+    filter_str = Column(String)
     chats = relationship(
         'Chat',
         secondary = keyword_chat_table,

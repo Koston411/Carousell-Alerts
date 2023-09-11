@@ -21,7 +21,8 @@ CREATE TABLE chats (
 
 CREATE TABLE keywords (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    keyword_str TEXT NOT NULL
+    keyword_str TEXT NOT NULL,
+    filter_str TEXT
 );
 
 CREATE TABLE keyword_chat (
