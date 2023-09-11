@@ -61,13 +61,9 @@ class TelegramChatBot():
                 " !!! I'm Marabou Bot to help you be alerted if I find new listings on Carousell. Type /help if you want to know how to work with me"
             context.bot.send_message(chat_id=chat_id, text=message)
 
-    # def start(upd: Update, context: CallbackContext):
-    #     context.bot.send_message(chat_id=upd.effective_chat.id, text="Heya! I'm Marabou bot and I just woke up")
-
     def unknown(self, upd, context):
         context.bot.send_message(chat_id=upd.effective_chat.id,
                                  text="Sorry, I don't speak your language. You can type /help to learn about the commands I know")
-        # upd.message.reply_text(upd.message.text)
 
     def register_chat_id(self, upd, context):
         id = str(upd.effective_chat.id)
@@ -96,7 +92,6 @@ class TelegramChatBot():
 
     def add_keyword(self, upd, context):
         try:
-            print('tetestststs')
             id = str(upd.effective_chat.id)
 
             # Extract the keyword from the received bot command
@@ -150,85 +145,40 @@ class TelegramChatBot():
         context.bot.send_message(
             chat_id=id, text=message, reply_markup=reply_markup)
 
-    # def remove_keyword(self, upd, context):
-    #     id = str(upd.effective_chat.id)
-    #     chat = TelegramChatBot.session.query(
-    #         Chat).filter(Chat.chat_id == id).first()
-
-    #     message = 'Select the keyword you want to remove:'
-    #     buttons = []
-    #     if (len(chat.keywords) == 0):
-    #         message = 'No keyword to delete'
-    #     else:
-    #         for keyword in chat.keywords:
-        # data = {
-        #     "actionType": "removeKeyword",
-        #     "chatID": chat.id,
-        #     "keyword": keyword.keyword_str
-        # }
-
-    #             buttons.append([InlineKeyboardButton(
-    #                 keyword.keyword_str, callback_data=json.dumps(data))])
-
-    #     reply_markup = InlineKeyboardMarkup(buttons)
-    #     context.bot.send_message(
-    #         chat_id=id, text=message, reply_markup=reply_markup)
-
     def callback(self, upd, context):
-        print(upd)
-        print('---------------------------')
 
         args = upd.callback_query.data.split('|')
-        print('--------------------------1')
         chatID = upd.effective_chat.id
-        print('--------------------------2')
-        # if upd.callback_query.message is None:
-        #     upd.answer_callback_query(
-        #         callback_query_id=upd.callback_query.id
-        #     )
-        #     return
 
         # Get the type of the action requested
         if (args[0] == 'add1'):
             message = '*_' + self.clean_message_for_telegram(
                 args[1]) + '_* is added to your list of keywords'
-            print('--------------------------3')
             context.bot.send_message(
                 chat_id=chatID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
-            print('--------------------------4')
 
             # Create chat DB object to associate it to the keyword
             chat = self.session.query(
                 Chat).filter(Chat.chat_id == chatID).first()
-            print('--------------------------5')
 
             # Add keyword in DB if it doesn't exist
             keyword = self.session.query(Keyword).filter_by(
                 keyword_str=args[1]).first()
-            print('--------------------------6')
 
             if not keyword:
                 keyword = Keyword(keyword_str=args[1])
                 self.session.add(keyword)
-            print('--------------------------7')
-            print(keyword)
             chat.keywords.append(keyword)
             self.session.commit()
 
         elif (args[0] == 'rmKey'):
             # callback_data = upd.callback_query.data
-            print('--------------------------8')
             if upd.callback_query.message is None:
-                print('--------------------------9')
                 upd.answer_callback_query(
                     callback_query_id=upd.callback_query.id
                 )
                 return
-            # origin_message_id = upd.callback_query.message.message_id
-            # chat_id = upd.callback_query.message.chat_id
-            # user_id = upd.callback_query.from_user.id
 
-            print('--------------------------9A')
             keyword_id = args[1]
             keyword = self.session.query(
                 Keyword).filter(Keyword.id == keyword_id).first()
@@ -264,8 +214,6 @@ class TelegramChatBot():
                     chat_id=chat_ID, text=message, parse_mode=telegram.constants.PARSEMODE_MARKDOWN_V2)
             except Exception as e:
                 if (str(e) == 'Forbidden: bot was kicked from the group chat'):
-                    print("Remove a chat ID")
-
                     # Remove chat ID as it's not valid anymore
                     chat = self.session.query(
                         Chat).filter(Chat.chat_id == chat_ID).first()
@@ -291,7 +239,6 @@ class TelegramChatBot():
                 print(e)
 
     def __init__(self):
-        # self.dispatcher.add_handler(MessageHandler(Filters.update,self.log_update))
 
         # Help handler
         help_handler = CommandHandler("help", self.help)

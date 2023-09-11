@@ -25,7 +25,6 @@ Base = declarative_base()
 
 
 def sleep(_, duration=configuration.FREQUENCY):
-    print(f'sleeping for: {duration}')
     time.sleep(duration)
 
 
@@ -37,7 +36,6 @@ def crawl(runner):
 
 
 def loop_crawl():
-    print("loop_crawl")
     runner = CrawlerRunner(get_project_settings())
     crawl(runner)
     reactor.run()
@@ -47,9 +45,6 @@ def getKeywordFromDB(session):
     # Get keywords from DB
     db_keywords = [
         keyword_obj.keyword_str for keyword_obj in session.query(Keyword).all()]
-
-    print('getKeywordFromDB')
-    print(db_keywords)
 
     return db_keywords
 
@@ -63,41 +58,34 @@ class CarousellSpider(scrapy.Spider):
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    # Remove unused keywords in DB
-    db_keywords = session.query(Keyword).filter(~Keyword.chats.any()).all()
-    for keyword_obj in db_keywords:
-        session.delete(keyword_obj)
-    session.commit()
-    print('----------------------' + 'CarousellSpider')
-
-    def generate_search_urls(session):
+    def generate_search_urls(self, _session):
         base_url = ("https://www.carousell.sg/search/")
         params = {'addRecent': 'false', 'canChangeKeyword': 'false',
                   'includeSuggestions': 'false', 'sort_by': '3'}
         urls = []
-        for search in getKeywordFromDB(session):
+        for search in getKeywordFromDB(_session):
             query_url = base_url + \
                 urllib.parse.quote(search) + "?" + \
                 urllib.parse.urlencode(params)
             urls.append(query_url)
-
-        print('000000000000000000000000000000000')
-        print("generate_search_urls")
-
         return urls
 
     def start_requests(self):
+
+        # Remove unused keywords in DB
+        db_keywords = self.session.query(Keyword).filter(~Keyword.chats.any()).all()
+        for keyword_obj in db_keywords:
+            self.session.delete(keyword_obj)
+        self.session.commit()
+
         # Set signals to be able to kill the application
         signal.signal(signal.SIGINT, self.custom_terminate_spider)  # CTRL+C
         # sent by scrapyd
         signal.signal(signal.SIGTERM, self.custom_terminate_spider)
 
-        print('++++++++++++++++++++++++++++++++++++++++++++++++++start_requests')
-        print(self.start_urls)
-
-        if (self.start_urls):
+        if (self.generate_search_urls(self.session)):
             # Parse the keywords in DB to search in Carousell
-            for url in self.start_urls:
+            for url in self.generate_search_urls(self.session):
                 yield scrapy.FormRequest(url, self.response_parser, headers=configuration.HEADERS)
 
     def custom_terminate_spider(self, sig, frame):
@@ -122,11 +110,12 @@ class CarousellSpider(scrapy.Spider):
 
             searchItems = json_obj['SearchListing']['listingCards']
             if (searchItems):
+                DB_keywords = getKeywordFromDB(self.session)
                 for item in searchItems:
                     # Select only the items which are NOT promoted by Carousell
                     if not 'promoted' in item and item['listingID'] > 0:
                         is_item_valid = False
-                        for search_keyword in getKeywordFromDB(self.session):
+                        for search_keyword in DB_keywords:
                             search_keyword = search_keyword.lower()
                             title = item['title'].lower()
 
@@ -136,10 +125,7 @@ class CarousellSpider(scrapy.Spider):
                                 break
 
                         if is_item_valid == False:
-                            # print ('<<<<<<<<<<<<<<<<<<<<<<<<<<< ' + search_keyword + ' NOT in title')
-                            # print (title)
                             item['title'] = '? ' + item['title']
-                            # print (response.request)
                             yield item
 
     def create_item_url(self, item_id, item_title):
@@ -184,10 +170,6 @@ class CarousellSpider(scrapy.Spider):
 
     def spider_closed(self, spider):
         spider.logger.info('Spider closed: %s', spider.name)
-        print('spider_closed')
-
-    start_urls = generate_search_urls(session)
-
 
 class CarousellSearch():
     def __init__(self, results=30):
